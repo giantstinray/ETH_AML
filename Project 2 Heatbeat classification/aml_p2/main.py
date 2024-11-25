@@ -10,6 +10,7 @@ from scipy.signal import find_peaks
 from scipy.stats import kurtosis, skew
 import multiprocess as mp
 from tqdm import tqdm
+import hrvanalysis
 
 # Change this path to the folder that has your data
 fpath = "data/"
@@ -156,6 +157,64 @@ def _feature_engineering(signal, method="neurokit"):
     # Time-domain features: Mean, Standard deviation, Skewness, Kurtosis
     features += time_domain_features(clip)
 
+        # New Features
+    # 1. Normalized RR intervals
+    rr_normalized = (rr_intervals - np.min(rr_intervals)) / (
+        np.max(rr_intervals) - np.min(rr_intervals)
+    )
+    features += summary_stats(rr_normalized)
+
+    # 2. Skewness and Kurtosis of RR intervals
+    features.append(skew(rr_intervals))
+    features.append(kurtosis(rr_intervals))
+
+    # 3. Peak-to-peak amplitude variability
+    r_amplitudes = signal[rpeaks]
+    features.append(np.std(r_amplitudes))
+
+    # 4. Median Absolute Deviation (MAD) of Clean ECG
+    mad_ecg_clean = np.median(
+        np.abs(signals["ECG_Clean"] - np.median(signals["ECG_Clean"]))
+    )
+    features.append(mad_ecg_clean)
+
+    # 5. Fraction of low-amplitude peaks
+    low_amp_fraction = np.sum(r_amplitudes < 0.5 * np.mean(r_amplitudes)) / len(
+        r_amplitudes
+    )
+    features.append(low_amp_fraction)
+
+    # 6. Energy of the signal
+    features.append(np.sum(np.square(signal)))
+
+    # 7. Normalized power in frequency bands
+    vlf_power = np.sum(spec[(freq >= 0.003) & (freq < 0.04)])
+    lf_power = np.sum(spec[(freq >= 0.04) & (freq < 0.15)])
+    hf_power = np.sum(spec[(freq >= 0.15) & (freq < 0.4)])
+    total_power = vlf_power + lf_power + hf_power
+    features += [
+        vlf_power / total_power if total_power != 0 else 0,
+        lf_power / total_power if total_power != 0 else 0,
+        hf_power / total_power if total_power != 0 else 0,
+    ]
+
+    # 8. Harmonic mean of RR intervals
+    rr_harmonic_mean = len(rr_intervals) / np.sum(1.0 / rr_intervals)
+    features.append(rr_harmonic_mean)
+
+    # 9. Baseline wander amplitude
+    baseline = nk.signal_filter(signal, sampling_rate=300, lowcut=0.5, method="butter")
+    baseline_wander_amplitude = np.max(baseline) - np.min(baseline)
+    features.append(baseline_wander_amplitude)
+
+    # # 10. Feature extraction using hrvanalysis library
+    # hrv_features  = extract_hrv_features(rpeaks)   # Convert RR intervals to milliseconds
+    # features += hrv_features
+    
+    # Return the extracted feature vector
+    return features
+
+
     # Return the extracted feature vector
     return features
 
@@ -175,6 +234,70 @@ def time_domain_features(signal):
     skewness = skew(signal)
     kurt = kurtosis(signal)
     return [mean, std, skewness, kurt]
+
+def extract_hrv_features(r_peaks):
+    tdf_names = [
+        "mean_nni",
+        "sdnn",
+        "sdsd",
+        "nni_50",
+        "pnni_50",
+        "nni_20",
+        "pnni_20",
+        "rmssd",
+        "median_nni",
+        "range_nni",
+        "cvsd",
+        "cvnni",
+        "mean_hr",
+        "max_hr",
+        "min_hr",
+        "std_hr",
+    ]
+
+    gf_names = ["triangular_index"]
+
+    fdf_names = ["lf", "hf", "lf_hf_ratio", "lfnu", "hfnu", "total_power", "vlf"]
+
+    cscv_names = [
+        "csi",
+        "cvi",
+        "Modified_csi",
+    ]
+
+    pcp_names = ["sd1", "sd2", "ratio_sd2_sd1"]
+    features = np.ndarray((len(tdf_names) + len(gf_names) + len(fdf_names) + len(cscv_names) + len(pcp_names),))
+    features[:] = 0
+    features = list(features)
+    
+    try:
+        tdf = hrvanalysis.get_time_domain_features(r_peaks)
+        gf = hrvanalysis.get_geometrical_features(r_peaks)
+        fdf = hrvanalysis.get_frequency_domain_features(r_peaks)
+        cscv = hrvanalysis.get_csi_cvi_features(r_peaks)
+        pcp = hrvanalysis.get_poincare_plot_features(r_peaks)
+        samp = hrvanalysis.get_sampen(r_peaks)
+    except:
+        return []
+
+    for name in tdf_names:
+        features.append(tdf[name])
+
+    for name in gf_names:
+        features.append(gf[name])
+
+    for name in fdf_names:
+        features.append(fdf[name])
+
+    for name in cscv_names:
+        features.append(cscv[name])
+
+    for name in pcp_names:
+        features.append(pcp[name])
+
+    features.append(samp["sampen"])
+
+    return features
 
 
 # Binned function for downsampling and applying a function over binned data
