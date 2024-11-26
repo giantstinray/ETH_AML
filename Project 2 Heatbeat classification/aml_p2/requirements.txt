@@ -6,3 +6,4 @@ scipy==1.13.1
 multiprocess==0.70.17
 tqdm==4.66.6
 hrv-analysis==1.0.5
+biosppy==2.2.2

@@ -1,6 +1,7 @@
 import csv
 import os
 import neurokit2 as nk
+from biosppy.signals import ecg
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -211,6 +212,11 @@ def _feature_engineering(signal, method="neurokit"):
     # hrv_features  = extract_hrv_features(rpeaks)   # Convert RR intervals to milliseconds
     # features += hrv_features
     
+    # # 11. Extract template features using ECG module from biosppy
+    # templates = ecg.ecg(signal=signal, sampling_rate=300, show=False)["templates"]
+    # template_features = extract_template_features(templates)
+    # features += template_features
+
     # Return the extracted feature vector
     return features
 
@@ -234,6 +240,25 @@ def time_domain_features(signal):
     skewness = skew(signal)
     kurt = kurtosis(signal)
     return [mean, std, skewness, kurt]
+
+def extract_template_features(templates):
+    
+    med_template = np.median(templates, axis=0)
+    med_std = np.std(med_template)
+    med_mean = np.mean(med_template)
+    med_med = np.median(med_template)
+
+    mean_template = np.mean(templates, axis=0)
+    mean_std = np.std(mean_template)
+    mean_mean = np.mean(mean_template)
+    mean_med = np.median(mean_template)
+
+    std_template = np.std(templates, axis = 0)
+    std_std = np.std(std_template)
+    std_mean = np.mean(std_template)
+    std_med = np.median(std_template)
+
+    return [med_std, med_mean, med_med, mean_std, mean_mean, mean_med, std_std, std_mean, std_med]
 
 def extract_hrv_features(r_peaks):
     tdf_names = [
