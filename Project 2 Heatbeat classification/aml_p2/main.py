@@ -208,14 +208,14 @@ def _feature_engineering(signal, method="neurokit"):
     baseline_wander_amplitude = np.max(baseline) - np.min(baseline)
     features.append(baseline_wander_amplitude)
 
-    # # 10. Feature extraction using hrvanalysis library
-    # hrv_features  = extract_hrv_features(rpeaks)   # Convert RR intervals to milliseconds
-    # features += hrv_features
+    # 10. Feature extraction using hrvanalysis library
+    hrv_features  = extract_hrv_features(rpeaks)   # Convert RR intervals to milliseconds
+    features += hrv_features
     
-    # # 11. Extract template features using ECG module from biosppy
-    # templates = ecg.ecg(signal=signal, sampling_rate=300, show=False)["templates"]
-    # template_features = extract_template_features(templates)
-    # features += template_features
+    # 11. Extract template features using ECG module from biosppy
+    templates = ecg.ecg(signal=signal, sampling_rate=300, show=False)["templates"]
+    template_features = extract_template_features(templates)
+    features += template_features
 
     # Return the extracted feature vector
     return features
