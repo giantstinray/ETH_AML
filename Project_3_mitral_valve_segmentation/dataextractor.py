@@ -3,6 +3,7 @@ import gzip
 import numpy as np
 import os
 from tqdm import tqdm
+import cv2
 
 def load_zipped_pickle(filename):
     with gzip.open(filename, 'rb') as f:
@@ -73,3 +74,57 @@ def preprocess_test_data():
         video_frames += list(video)
         names += [item['name'] for _ in video]
     return names, video_frames
+
+def resize_with_mask(video_frames, mask_frames, target_size=(512, 512)):
+    """
+    Resize a frame and its corresponding mask to the target size.
+    Uses bicubic interpolation for frames and nearest-neighbor for masks.
+    This is for resizing the amateur videos which are significantly smaller 
+    than the expert videos ONLY.
+    """
+    resized_frames = []
+    resized_masks = []
+    for frame, mask in zip(video_frames, mask_frames):
+        resized_frames.append(cv2.resize(frame, target_size, interpolation=cv2.INTER_CUBIC))
+        resized_masks.append(cv2.resize(mask, target_size, interpolation=cv2.INTER_NEAREST))
+    return resized_frames, resized_masks
+
+def pad_or_crop_with_mask(video_frames, mask_frames, target_size=(700, 700)):
+    """
+    Resize a frame and its mask to fit the target size, either by padding or cropping.
+    Handles frames smaller than the target size by padding and larger ones by cropping.
+    This is for resizing the expert videos and also the processed amateur videos to the
+    final size of 700x700.
+    """
+    target_h, target_w = target_size
+    final_frames = []
+    final_masks = []
+
+    for frame, mask in zip(video_frames, mask_frames):
+        h, w = frame.shape[:2]
+        # Adjust height
+        if h < target_h:  # Pad height
+            pad_h = (target_h - h) // 2
+            pad_h_remain = target_h - h - pad_h
+            frame = np.pad(frame, ((pad_h, pad_h_remain), (0, 0)), mode='constant', constant_values=0)
+            mask = np.pad(mask, ((pad_h, pad_h_remain), (0, 0)), mode='constant', constant_values=0)
+        elif h > target_h:  # Crop height
+            crop_h = (h - target_h) // 2
+            frame = frame[crop_h:crop_h + target_h, :]
+            mask = mask[crop_h:crop_h + target_h, :]
+
+        # Adjust width
+        if w < target_w:  # Pad width
+            pad_w = (target_w - w) // 2
+            pad_w_remain = target_w - w - pad_w
+            frame = np.pad(frame, ((0, 0), (pad_w, pad_w_remain)), mode='constant', constant_values=0)
+            mask = np.pad(mask, ((0, 0), (pad_w, pad_w_remain)), mode='constant', constant_values=0)
+        elif w > target_w:  # Crop width
+            crop_w = (w - target_w) // 2
+            frame = frame[:, crop_w:crop_w + target_w]
+            mask = mask[:, crop_w:crop_w + target_w]
+
+        final_frames.append(frame)
+        final_masks.append(mask)
+    
+    return final_frames, final_masks
