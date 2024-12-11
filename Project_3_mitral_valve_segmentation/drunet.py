@@ -119,13 +119,20 @@ def save_checkpoint(model, optimizer, epoch, loss, checkpoint_dir="checkpoints")
     print(f"Checkpoint saved at {checkpoint_path}")
 
 def load_checkpoint(checkpoint_path, model, optimizer):
+    """
+    Load a saved checkpoint to resume training.
+    :param checkpoint_path: Path to the saved checkpoint file.
+    :param model: The model instance.
+    :param optimizer: The optimizer instance.
+    :return: model, optimizer, start_epoch, and last_loss
+    """
     checkpoint = torch.load(checkpoint_path)
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     start_epoch = checkpoint['epoch'] + 1
-    loss = checkpoint['loss']
-    print(f"Resumed from checkpoint: {checkpoint_path}, Epoch: {start_epoch}, Loss: {loss}")
-    return model, optimizer, start_epoch
+    last_loss = checkpoint['loss']
+    print(f"Resumed from checkpoint: {checkpoint_path}, Epoch: {start_epoch}, Loss: {last_loss}")
+    return model, optimizer, start_epoch, last_loss
 
 # Load Data
 train_frames, train_masks = load_zipped_pickle('combined_train_data.pkl')
@@ -139,18 +146,35 @@ val_dataset = Noise2NoiseDataset(val_frames, val_masks)
 train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False)
 
-# Initialize Model, Optimizer, and Scheduler
+# Initialize model, optimizer, scheduler, and optionally load from checkpoint
+resume_training = True
+checkpoint_path = "checkpoints/drunet_epoch_6.pth"
+
+# Model, optimizer, scheduler
 model = DRUNet().cuda()
 optimizer = Adam(model.parameters(), lr=1e-4)
 scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2, verbose=True)
 criterion = hybrid_loss
 
+# Start epoch and best validation loss
+start_epoch = 0
+best_val_loss = float('inf')
+
+# Resume from checkpoint if enabled
+if resume_training and os.path.exists(checkpoint_path):
+    checkpoint = torch.load(checkpoint_path)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    scheduler.load_state_dict(checkpoint.get('scheduler_state_dict', scheduler.state_dict()))
+    start_epoch = checkpoint['epoch'] + 1
+    best_val_loss = checkpoint['loss']
+    print(f"Resumed from checkpoint: {checkpoint_path}, starting at epoch {start_epoch}, best val loss: {best_val_loss:.4f}")
+
 # TensorBoard for Logging
 writer = SummaryWriter()
 
 # Training Loop
-best_val_loss = float('inf')
-for epoch in range(50):
+for epoch in range(start_epoch, 50):  # Start from checkpoint epoch
     model.train()
     train_loss = 0.0
     for batch in train_loader:
@@ -196,5 +220,6 @@ for epoch in range(50):
     if val_loss < best_val_loss:
         best_val_loss = val_loss
         save_checkpoint(model, optimizer, epoch, val_loss)
+        torch.save({'scheduler_state_dict': scheduler.state_dict()}, checkpoint_path)
 
 writer.close()
