@@ -23,12 +23,13 @@ transform = A.Compose([
     A.VerticalFlip(p=0.5),
     A.RandomRotate90(p=0.5),
     A.Normalize(mean=(0.5,), std=(0.5,)),
+    A.pytorch.ToTensorV2()
 ])
 
 train_dataset = SegmentationDataset(train_frames, train_masks, transform=transform)
 val_dataset = SegmentationDataset(val_frames, val_masks, transform=transform)
-train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=16)
+train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=4)
 
 # Initialize variables for checkpointing
 best_val_loss = float('inf')  # Set initial best loss to a very large value
@@ -41,7 +42,7 @@ for epoch in range(num_epochs):
     train_loss = 0
     for images, masks in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}"):
         images, masks = images.to(device), masks.to(device)
-
+        masks = masks.unsqueeze(1)
         optimizer.zero_grad()
         outputs = model(images)
         loss = criterion(outputs, masks)
@@ -57,6 +58,7 @@ for epoch in range(num_epochs):
     with torch.no_grad():
         for images, masks in val_loader:
             images, masks = images.to(device), masks.to(device)
+            masks = masks.unsqueeze(1)
             outputs = model(images)
             loss = criterion(outputs, masks)
             val_loss += loss.item()
