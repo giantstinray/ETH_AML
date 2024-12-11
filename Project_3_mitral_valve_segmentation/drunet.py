@@ -107,9 +107,9 @@ def hybrid_loss(outputs, noisy_targets, clean_targets=None, masks=None):
     return mse_loss
 
 # Save/Load Checkpoint Functions
-def save_checkpoint(model, optimizer, epoch, loss, checkpoint_dir="checkpoints"):
+def save_checkpoint(model, optimizer, epoch, loss, checkpoint_dir="checkpoints", name="drunet"):
     os.makedirs(checkpoint_dir, exist_ok=True)
-    checkpoint_path = os.path.join(checkpoint_dir, f"drunet_epoch_{epoch}.pth")
+    checkpoint_path = os.path.join(checkpoint_dir, name+f"_epoch_{epoch}.pth")
     torch.save({
         'epoch': epoch,
         'model_state_dict': model.state_dict(),
@@ -215,6 +215,5 @@ if __name__ == "__main__":
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             save_checkpoint(model, optimizer, epoch, val_loss)
-            torch.save({'scheduler_state_dict': scheduler.state_dict()}, checkpoint_path)
 
     writer.close()

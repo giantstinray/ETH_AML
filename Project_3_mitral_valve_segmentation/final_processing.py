@@ -8,6 +8,7 @@ from tqdm import tqdm
 import pickle
 # Load the DRUNet model definition
 from drunet import DRUNet, load_zipped_pickle, load_checkpoint  # Assume this file contains your DRUNet definition
+from reshape import save_zipped_pickle
 
 def denoise_image(image, model, device='cuda'):
     """Denoise a single image using the DRUNet model."""
@@ -78,13 +79,8 @@ def process_combined_data(pkl_file_path, output_pkl_path, checkpoint_path):
         processed_frames.append(enhanced_frame)
         processed_masks.append(smoothed_mask)  # Masks remain unchanged
 
-    # Save the processed data back to a .pkl file
-    processed_data = {
-        'frames': np.array(processed_frames),
-        'masks': np.array(processed_masks)
-    }
-    with open(output_pkl_path, 'wb') as file:
-        pickle.dump(processed_data, file)
+
+    save_zipped_pickle((processed_frames, processed_masks), output_pkl_path)
 
     print(f"Processed data saved to {output_pkl_path}")
 
