@@ -134,73 +134,46 @@ def load_checkpoint(checkpoint_path, model, optimizer):
     print(f"Resumed from checkpoint: {checkpoint_path}, Epoch: {start_epoch}, Loss: {last_loss}")
     return model, optimizer, start_epoch, last_loss
 
-# Load Data
-train_frames, train_masks = load_zipped_pickle('combined_train_data.pkl')
-train_frames, val_frames, train_masks, val_masks = train_test_split(
-    train_frames, train_masks, test_size=0.2, random_state=42
-)
+if __name__ == "__main__":
+    # Load Data
+    train_frames, train_masks = load_zipped_pickle('combined_train_data.pkl')
+    train_frames, val_frames, train_masks, val_masks = train_test_split(
+        train_frames, train_masks, test_size=0.2, random_state=42
+    )
 
-# Create Datasets and DataLoaders
-train_dataset = Noise2NoiseDataset(train_frames, train_masks)
-val_dataset = Noise2NoiseDataset(val_frames, val_masks)
-train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False)
+    # Create Datasets and DataLoaders
+    train_dataset = Noise2NoiseDataset(train_frames, train_masks)
+    val_dataset = Noise2NoiseDataset(val_frames, val_masks)
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False)
 
-# Initialize model, optimizer, scheduler, and optionally load from checkpoint
-resume_training = True
-checkpoint_path = "checkpoints/drunet_epoch_6.pth"
+    # Initialize model, optimizer, scheduler, and optionally load from checkpoint
+    resume_training = True
+    checkpoint_path = "checkpoints/drunet_epoch_6.pth"
 
-# Model, optimizer, scheduler
-model = DRUNet().cuda()
-optimizer = Adam(model.parameters(), lr=1e-4)
-scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2, verbose=True)
-criterion = hybrid_loss
+    # Model, optimizer, scheduler
+    model = DRUNet().cuda()
+    optimizer = Adam(model.parameters(), lr=1e-4)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2, verbose=True)
+    criterion = hybrid_loss
 
-# Start epoch and best validation loss
-start_epoch = 0
-best_val_loss = float('inf')
+    # Start epoch and best validation loss
+    start_epoch = 0
+    best_val_loss = float('inf')
 
-# Resume from checkpoint if enabled
-if resume_training and os.path.exists(checkpoint_path):
-    checkpoint = torch.load(checkpoint_path)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    scheduler.load_state_dict(checkpoint.get('scheduler_state_dict', scheduler.state_dict()))
-    start_epoch = checkpoint['epoch'] + 1
-    best_val_loss = checkpoint['loss']
-    print(f"Resumed from checkpoint: {checkpoint_path}, starting at epoch {start_epoch}, best val loss: {best_val_loss:.4f}")
+    # Resume from checkpoint if enabled
+    if resume_training and os.path.exists(checkpoint_path):
+        model, optimizer, start_epoch, best_val_loss = load_checkpoint(checkpoint_path, model, optimizer)
 
-# TensorBoard for Logging
-writer = SummaryWriter()
+    # TensorBoard for Logging
+    writer = SummaryWriter()
 
-# Training Loop
-for epoch in range(start_epoch, 50):  # Start from checkpoint epoch
-    model.train()
-    train_loss = 0.0
-    for batch in train_loader:
-        if len(batch) == 3:  # Frames, Noisy Targets, Masks
-            noisy1, noisy2, masks = batch
-            noisy1, noisy2, masks = noisy1.cuda(), noisy2.cuda(), masks.cuda()
-            outputs = model(noisy1)
-            loss = criterion(outputs, noisy2, masks=masks)
-        else:
-            noisy1, noisy2 = batch
-            noisy1, noisy2 = noisy1.cuda(), noisy2.cuda()
-            outputs = model(noisy1)
-            loss = criterion(outputs, noisy2)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        train_loss += loss.item()
-    train_loss /= len(train_loader)
-    writer.add_scalar('Loss/train', train_loss, epoch)
-
-    # Validation Phase
-    model.eval()
-    val_loss = 0.0
-    with torch.no_grad():
-        for batch in val_loader:
-            if len(batch) == 3:
+    # Training Loop
+    for epoch in range(start_epoch, 50):  # Start from checkpoint epoch
+        model.train()
+        train_loss = 0.0
+        for batch in train_loader:
+            if len(batch) == 3:  # Frames, Noisy Targets, Masks
                 noisy1, noisy2, masks = batch
                 noisy1, noisy2, masks = noisy1.cuda(), noisy2.cuda(), masks.cuda()
                 outputs = model(noisy1)
@@ -210,16 +183,38 @@ for epoch in range(start_epoch, 50):  # Start from checkpoint epoch
                 noisy1, noisy2 = noisy1.cuda(), noisy2.cuda()
                 outputs = model(noisy1)
                 loss = criterion(outputs, noisy2)
-            val_loss += loss.item()
-    val_loss /= len(val_loader)
-    scheduler.step(val_loss)
-    writer.add_scalar('Loss/val', val_loss, epoch)
-    print(f"Epoch {epoch + 1}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item()
+        train_loss /= len(train_loader)
+        writer.add_scalar('Loss/train', train_loss, epoch)
 
-    # Save Best Model
-    if val_loss < best_val_loss:
-        best_val_loss = val_loss
-        save_checkpoint(model, optimizer, epoch, val_loss)
-        torch.save({'scheduler_state_dict': scheduler.state_dict()}, checkpoint_path)
+        # Validation Phase
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for batch in val_loader:
+                if len(batch) == 3:
+                    noisy1, noisy2, masks = batch
+                    noisy1, noisy2, masks = noisy1.cuda(), noisy2.cuda(), masks.cuda()
+                    outputs = model(noisy1)
+                    loss = criterion(outputs, noisy2, masks=masks)
+                else:
+                    noisy1, noisy2 = batch
+                    noisy1, noisy2 = noisy1.cuda(), noisy2.cuda()
+                    outputs = model(noisy1)
+                    loss = criterion(outputs, noisy2)
+                val_loss += loss.item()
+        val_loss /= len(val_loader)
+        scheduler.step(val_loss)
+        writer.add_scalar('Loss/val', val_loss, epoch)
+        print(f"Epoch {epoch + 1}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
 
-writer.close()
+        # Save Best Model
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            save_checkpoint(model, optimizer, epoch, val_loss)
+            torch.save({'scheduler_state_dict': scheduler.state_dict()}, checkpoint_path)
+
+    writer.close()
