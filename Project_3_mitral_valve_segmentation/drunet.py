@@ -214,6 +214,6 @@ if __name__ == "__main__":
         # Save Best Model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            save_checkpoint(model, optimizer, epoch, val_loss)
+            save_checkpoint(model, optimizer, epoch, val_loss, checkpoint_dir="checkpoints", name="drunet")
 
     writer.close()

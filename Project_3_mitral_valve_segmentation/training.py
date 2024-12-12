@@ -4,14 +4,9 @@ import torch.optim as optim
 import albumentations as A
 from tqdm import tqdm
 from model import UNet, BCEWithPowerJaccardLoss, SegmentationDataset
-from drunet import load_zipped_pickle, save_checkpoint
+from drunet import load_zipped_pickle, save_checkpoint, load_checkpoint
 from sklearn.model_selection import train_test_split
-
-# Initialize the model, loss function, and optimizer
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = UNet(in_channels=1, out_channels=1).to(device)
-criterion = BCEWithPowerJaccardLoss(bce_weight=0.7, jaccard_weight=0.3, jaccard_exponent=2)
-optimizer = optim.Adam(model.parameters(), lr=1e-3)
+import os
 
 # Load data
 train_frames, train_masks = load_zipped_pickle('final_train_data.pkl')
@@ -31,13 +26,26 @@ val_dataset = SegmentationDataset(val_frames, val_masks, transform=transform)
 train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=4)
 
+# Select if you want to resume training and the checkpoint path
+resume_training = True
+checkpoint_path = "checkpoints/unet_epoch_4.pth"
+
+# Initialize the model, loss function, and optimizer
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = UNet(in_channels=1, out_channels=1).to(device)
+criterion = BCEWithPowerJaccardLoss(bce_weight=0.7, jaccard_weight=0.3, jaccard_exponent=2)
+optimizer = optim.Adam(model.parameters(), lr=1e-3)
+
 # Initialize variables for checkpointing
+start_epoch = 0
 best_val_loss = float('inf')  # Set initial best loss to a very large value
-checkpoint_path = "unet_checkpoint.pth"  # Path to save the checkpoint
+
+if resume_training and os.path.exists(checkpoint_path):
+    model, optimizer, start_epoch, best_val_loss = load_checkpoint(checkpoint_path, model, optimizer)
 
 # Training loop
 num_epochs = 50
-for epoch in range(num_epochs):
+for epoch in range(start_epoch,num_epochs):
     model.train()
     train_loss = 0
     for images, masks in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}"):
