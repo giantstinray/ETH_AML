@@ -7,6 +7,26 @@ from model import UNet, BCEWithPowerJaccardLoss, SegmentationDataset
 from drunet import load_zipped_pickle, save_checkpoint, load_checkpoint
 from sklearn.model_selection import train_test_split
 import os
+import numpy as np
+
+def calculate_iou(predictions, targets, threshold=0.7):
+    """
+    Calculate the IoU for a batch of predictions and targets.
+
+    Args:
+        predictions (torch.Tensor): Predicted masks (after sigmoid activation).
+        targets (torch.Tensor): Ground truth masks.
+        threshold (float): Threshold to binarize predictions.
+
+    Returns:
+        list: IoU for each sample in the batch.
+    """
+    predictions = (predictions > threshold).float()  # Binarize predictions
+    intersection = (predictions * targets).sum(dim=[1, 2, 3])  # Sum intersection over H, W
+    union = (predictions + targets).sum(dim=[1, 2, 3]) - intersection  # Sum union
+    iou = (intersection + 1e-7) / (union + 1e-7)  # Avoid division by zero
+    return iou.cpu().numpy().tolist()  # Convert to list for easier processing
+
 
 # Load data
 train_frames, train_masks = load_zipped_pickle('final_train_data.pkl')
@@ -48,6 +68,7 @@ num_epochs = 50
 for epoch in range(start_epoch,num_epochs):
     model.train()
     train_loss = 0
+    train_ious = []
     for images, masks in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}"):
         images, masks = images.to(device), masks.to(device)
         masks = masks.unsqueeze(1)
@@ -57,13 +78,18 @@ for epoch in range(start_epoch,num_epochs):
         loss.backward()
         optimizer.step()
         train_loss += loss.item()
-
-    print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}")
+        
+        # Compute IoU
+        train_ious += calculate_iou(torch.sigmoid(outputs), masks)
+        
+    train_median_iou = np.median(train_ious)
+    print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train Median IoU: {train_median_iou:.4f}")
 
     # Validation
     model.eval()
     val_loss = 0
     with torch.no_grad():
+        eval_ious = []
         for images, masks in val_loader:
             images, masks = images.to(device), masks.to(device)
             masks = masks.unsqueeze(1)
@@ -71,7 +97,11 @@ for epoch in range(start_epoch,num_epochs):
             loss = criterion(outputs, masks)
             val_loss += loss.item()
 
-    print(f"Epoch {epoch+1}/{num_epochs}, Validation Loss: {val_loss:.4f}")
+            # Compute IoU
+            eval_ious += calculate_iou(torch.sigmoid(outputs), masks)
+
+    eval_median_iou = np.median(eval_ious)
+    print(f"Epoch {epoch+1}/{num_epochs}, Validation Loss: {val_loss:.4f}, Validation Median IoU: {eval_median_iou:.4f}")
 
     # Checkpoint: Save the model if validation loss improves
     if val_loss < best_val_loss:

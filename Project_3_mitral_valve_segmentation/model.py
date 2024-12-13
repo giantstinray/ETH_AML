@@ -86,14 +86,24 @@ class UNet(nn.Module):
 class BCEWithPowerJaccardLoss(nn.Module):
     def __init__(self, bce_weight=0.7, jaccard_weight=0.3, jaccard_exponent=2):
         super(BCEWithPowerJaccardLoss, self).__init__()
-        self.bce = nn.BCELoss()
         self.bce_weight = bce_weight
         self.jaccard_weight = jaccard_weight
         self.jaccard_exponent = jaccard_exponent
 
     def forward(self, inputs, targets):
-        # BCE Loss
-        bce_loss = self.bce(inputs, targets)
+        # Compute class weights based on the target distribution
+        num_positives = targets.sum()
+        num_negatives = targets.numel() - num_positives
+
+        # Avoid division by zero
+        pos_weight = num_negatives / (num_positives + 1e-7)
+        neg_weight = 1.0  # Keep negative class weight at 1.0
+
+        # Create per-class weights for the BCE loss
+        weights = torch.where(targets == 1, pos_weight, neg_weight)
+
+        # BCE Loss with weights
+        bce_loss = nn.functional.binary_cross_entropy(inputs, targets, weight=weights)
 
         # Power Jaccard Loss
         inputs = inputs.view(-1)
@@ -105,7 +115,6 @@ class BCEWithPowerJaccardLoss(nn.Module):
         # Combined Loss
         combined_loss = self.bce_weight * bce_loss + self.jaccard_weight * jaccard_loss
         return combined_loss
-
 
 # Training pipeline
 

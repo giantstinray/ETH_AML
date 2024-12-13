@@ -29,7 +29,7 @@ def predict_on_test_frames(model, test_frames, original_shapes, device='cuda'):
             pred_mask = torch.sigmoid(pred_mask).squeeze().cpu().numpy()  # Apply sigmoid and remove batch/channel dims
 
         # Threshold to create a binary mask
-        binary_mask = (pred_mask > 0.5).astype(np.uint8)  # Threshold at 0.5
+        binary_mask = (pred_mask > 0.5001).astype(np.uint8)  # Threshold at 0.5
 
         # Resize to the original frame shape if necessary
         resized_mask = cv2.resize(binary_mask, (original_shape[1], original_shape[0]), interpolation=cv2.INTER_NEAREST)
