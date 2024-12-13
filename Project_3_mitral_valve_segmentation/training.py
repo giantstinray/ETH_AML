@@ -3,13 +3,24 @@ from torch.utils.data import DataLoader
 import torch.optim as optim
 import albumentations as A
 from tqdm import tqdm
-from model import UNet, BCEWithPowerJaccardLoss, SegmentationDataset
+from model import UNet, BCEWithPowerJaccardLoss, SegmentationDataset, MorphologicalTransform
 from drunet import load_zipped_pickle, save_checkpoint, load_checkpoint
 from sklearn.model_selection import train_test_split
 import os
 import numpy as np
+import random
 
-def calculate_iou(predictions, targets, threshold=0.7):
+def set_seed(seed=42):
+    """Set the random seed for reproducibility."""
+    random.seed(seed)  # Python's random module
+    np.random.seed(seed)  # NumPy
+    torch.manual_seed(seed)  # PyTorch for CPU
+    torch.cuda.manual_seed(seed)  # PyTorch for current GPU
+    torch.cuda.manual_seed_all(seed)  # PyTorch for all GPUs
+    torch.backends.cudnn.deterministic = True  # Deterministic behavior for convolution
+    torch.backends.cudnn.benchmark = False  # Disable auto-tuning for reproducibility
+
+def calculate_iou(predictions, targets, threshold=0.72):
     """
     Calculate the IoU for a batch of predictions and targets.
 
@@ -27,6 +38,7 @@ def calculate_iou(predictions, targets, threshold=0.7):
     iou = (intersection + 1e-7) / (union + 1e-7)  # Avoid division by zero
     return iou.cpu().numpy().tolist()  # Convert to list for easier processing
 
+set_seed(42)
 
 # Load data
 train_frames, train_masks = load_zipped_pickle('final_train_data.pkl')
@@ -37,6 +49,8 @@ transform = A.Compose([
     A.HorizontalFlip(p=0.5),
     A.VerticalFlip(p=0.5),
     A.RandomRotate90(p=0.5),
+    MorphologicalTransform(operation="dilation", kernel_size=3, p=0.5),  # Add dilation
+    MorphologicalTransform(operation="erosion", kernel_size=3, p=0.5),  # Add erosion
     A.Normalize(mean=(0.5,), std=(0.5,)),
     A.pytorch.ToTensorV2()
 ])
@@ -48,7 +62,7 @@ val_loader = DataLoader(val_dataset, batch_size=4)
 
 # Select if you want to resume training and the checkpoint path
 resume_training = True
-checkpoint_path = "checkpoints/unet_epoch_4.pth"
+checkpoint_path = "checkpoints/unet_epoch_46.pth"
 
 # Initialize the model, loss function, and optimizer
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

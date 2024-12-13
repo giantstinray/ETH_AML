@@ -4,6 +4,9 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
+from albumentations.core.transforms_interface import ImageOnlyTransform
+import numpy as np
+import cv2
 
 class UNet(nn.Module):
     def __init__(self, in_channels=1, out_channels=1, init_features=32):
@@ -135,4 +138,20 @@ class SegmentationDataset(Dataset):
             image, mask = augmented['image'], augmented['mask']
         return image, mask
 
+class MorphologicalTransform(ImageOnlyTransform):
+    def __init__(self, operation="dilation", kernel_size=3, always_apply=False, p=0.5):
+        super().__init__(always_apply=always_apply, p=p)
+        self.operation = operation
+        self.kernel_size = kernel_size
 
+    def apply(self, img, **params):
+        kernel = np.ones((self.kernel_size, self.kernel_size), np.uint8)
+        if self.operation == "dilation":
+            return cv2.dilate(img, kernel, iterations=1)
+        elif self.operation == "erosion":
+            return cv2.erode(img, kernel, iterations=1)
+        else:
+            raise ValueError(f"Unsupported operation: {self.operation}")
+
+    def get_transform_init_args_names(self):
+        return ("operation", "kernel_size")
