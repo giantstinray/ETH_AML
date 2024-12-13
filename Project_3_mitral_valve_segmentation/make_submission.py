@@ -29,7 +29,7 @@ def predict_on_test_frames(model, test_frames, original_shapes, device='cuda'):
             pred_mask = torch.sigmoid(pred_mask).squeeze().cpu().numpy()  # Apply sigmoid and remove batch/channel dims
 
         # Threshold to create a binary mask
-        binary_mask = (pred_mask > 0.5001).astype(np.uint8)  # Threshold at 0.5
+        binary_mask = (pred_mask > 0.715=).astype(np.uint8)  # Threshold at 0.5
 
         # Resize to the original frame shape if necessary
         resized_mask = cv2.resize(binary_mask, (original_shape[1], original_shape[0]), interpolation=cv2.INTER_NEAREST)
@@ -53,14 +53,20 @@ def generate_submission(test_names, binary_masks, output_csv):
     """Generate a submission file from binary masks."""
     ids, values = [], []
 
-    for name, mask in tqdm(zip(test_names, binary_masks), total=len(test_names)):
-        flattened_mask = mask.flatten()  # Flatten the binary mask
+    concatenated_masks = {}
+    for name, mask in tqdm(zip(test_names, binary_masks), total=len(test_names), desc="Concatenating masks"):
+        if name not in concatenated_masks:
+            concatenated_masks[name] = mask
+        else:
+            concatenated_masks[name] = np.concatenate((concatenated_masks[name], mask), axis=0)
+
+    for name, mask in tqdm(concatenated_masks.items(), desc="Generating submission data"):
+        flattened_mask = mask.flatten()  # Flatten the concatenated binary mask
         start_indices, lengths = get_sequences(flattened_mask)  # Extract sequences
         
         for i, (start, length) in enumerate(zip(start_indices, lengths)):
             ids.append(f"{name}_{i}")  # Format ID as name_i
             values.append(f"[{start}, {length}]")  # Format value as [flattenedIdx, len]
-    
     # Create DataFrame and save as CSV
     submission_df = pd.DataFrame({"id": ids, "value": values})
     submission_df.to_csv(output_csv, index=False)
@@ -76,7 +82,7 @@ if __name__ == '__main__':
 
     # Load the UNet model
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    unet_model = load_unet_model('checkpoints/unet_epoch_46.pth', device=device)
+    unet_model = load_unet_model('checkpoints/unet_epoch_38.pth', device=device)
 
     # Predict binary masks
     binary_masks = predict_on_test_frames(unet_model, test_frames, original_shapes, device=device)

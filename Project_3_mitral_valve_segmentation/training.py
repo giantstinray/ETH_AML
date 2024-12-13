@@ -20,7 +20,7 @@ def set_seed(seed=42):
     torch.backends.cudnn.deterministic = True  # Deterministic behavior for convolution
     torch.backends.cudnn.benchmark = False  # Disable auto-tuning for reproducibility
 
-def calculate_iou(predictions, targets, threshold=0.72):
+def calculate_iou(predictions, targets, threshold=0.715):
     """
     Calculate the IoU for a batch of predictions and targets.
 
